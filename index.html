@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PetPulse – Prototype</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Inter', system-ui, sans-serif; }
+  .view { display: none; animation: fade .35s ease; }
+  .view.active { display: block; }
+  @keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .phone { transition: box-shadow .4s ease; }
+  .phone.alert { box-shadow: 0 0 0 6px #fb923c55, 0 30px 60px -15px #ef444466; }
+  .screen { transition: background-color .5s ease; scrollbar-width: none; }
+  .screen::-webkit-scrollbar { display: none; }
+  .pulse-ring { animation: ring 1.6s infinite; }
+  @keyframes ring { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,.5); } 100% { box-shadow: 0 0 0 18px rgba(239,68,68,0); } }
+  .toggle-knob { transition: transform .3s ease; }
+  .modal { display: none; }
+  .modal.open { display: flex; animation: fade .25s ease; }
+  .inp { display:block; width:100%; margin-top:4px; border:1px solid #e2e8f0; border-radius:12px; padding:10px 12px; font-size:14px; font-weight:400; background:#fff; color:#0f172a; }
+  .inp:focus { outline:2px solid #818cf8; border-color:transparent; }
+  .lbl { display:block; font-size:12px; font-weight:600; color:#475569; }
+  #qr img, #qr canvas { width:100% !important; height:100% !important; }
+  #qr canvas { display:none; }
+</style>
+</head>
+<body class="min-h-screen bg-slate-100">
+
+<!-- App -->
+<div id="phone" class="phone relative w-full max-w-2xl mx-auto min-h-screen">
+  <div class="relative min-h-screen bg-slate-50 flex flex-col screen shadow-xl" id="shell">
+
+    <!-- Header -->
+    <header class="sticky top-0 pt-4 pb-3 px-5 flex items-center justify-between bg-white/90 backdrop-blur z-20 border-b border-slate-100">
+      <div class="flex items-center gap-2">
+        <div id="logo" class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center transition-colors">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="10" r="2"/><circle cx="9" cy="5.5" r="2"/><circle cx="15" cy="5.5" r="2"/><circle cx="19" cy="10" r="2"/><path d="M12 11c-3 0-6 3.2-6 6 0 2 1.5 3 3 3 1.2 0 2-.6 3-.6s1.8.6 3 .6c1.5 0 3-1 3-3 0-2.800-3-6-6-6z"/></svg>
+        </div>
+        <span class="font-extrabold text-lg tracking-tight">Pet<span id="logoAccent" class="text-indigo-600 transition-colors">Pulse</span></span>
+      </div>
+      <span id="modeTag" class="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600">Owner</span>
+    </header>
+
+    <!-- Emergency banner -->
+    <div id="alertBar" class="hidden bg-gradient-to-r from-red-500 to-orange-500 text-white text-xs font-semibold px-5 py-2 text-center">
+      ⚠ MISSING MODE ACTIVE – <span class="pn">Max</span>’s tag now shows an urgent alert
+    </div>
+
+    <main class="flex-1 px-5 py-6 pb-10">
+
+      <!-- 0. SETUP -->
+      <section id="setup" class="view space-y-4">
+        <div class="text-center pt-1"><div class="text-4xl">🐾</div>
+          <h1 class="text-2xl font-extrabold tracking-tight mt-1">Create your pet’s passport</h1>
+          <p class="text-sm text-slate-500 mt-1">Add the details once. PetPulse builds the passport, QR tag and rescue page for you.</p></div>
+        <p id="setupErr" class="hidden text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5"></p>
+        <label class="flex flex-col items-center cursor-pointer">
+          <div id="photoPrev" class="w-24 h-24 rounded-full bg-indigo-50 border-2 border-dashed border-indigo-300 flex items-center justify-center text-3xl bg-cover bg-center">📷</div>
+          <span class="text-xs font-semibold text-indigo-600 mt-1.5">Add pet photo (optional)</span>
+          <input id="fPhoto" type="file" accept="image/*" class="hidden">
+        </label>
+        <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-3">
+          <h2 class="font-bold">About your pet</h2>
+          <label class="lbl">Pet name *<input id="fName" class="inp" placeholder="e.g. Bruno" maxlength="24"></label>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="lbl">Species<select id="fSpecies" class="inp"><option>Dog</option><option>Cat</option><option>Other</option></select></label>
+            <label class="lbl">Breed<input id="fBreed" class="inp" placeholder="Labrador"></label>
+            <label class="lbl">Age<input id="fAge" class="inp" placeholder="2 years"></label>
+            <label class="lbl">Weight<input id="fWeight" class="inp" placeholder="29 kg"></label>
+          </div>
+          <label class="flex items-center gap-2 text-sm"><input id="fChip" type="checkbox" class="w-4 h-4 accent-indigo-600"> Microchipped</label>
+        </div>
+        <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-3">
+          <h2 class="font-bold">Owner contact</h2>
+          <label class="lbl">Your name<input id="fOwner" class="inp" placeholder="Your name"></label>
+          <label class="lbl">Phone number *<input id="fPhone" type="tel" class="inp" placeholder="+91 98765 43210"></label>
+          <label class="flex items-center gap-2 text-sm"><input id="fWa" type="checkbox" checked class="w-4 h-4 accent-indigo-600"> Finders can WhatsApp this number</label>
+        </div>
+        <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-3">
+          <h2 class="font-bold">Vaccinations <span class="text-xs font-normal text-slate-400">(optional)</span></h2>
+          <div class="grid grid-cols-5 gap-2">
+            <label class="lbl col-span-3">Completed vaccine<input id="fV1" class="inp" placeholder="e.g. Parvovirus"></label>
+            <label class="lbl col-span-2">Date given<input id="fV1d" type="date" class="inp"></label>
+            <label class="lbl col-span-3">Next vaccine due<input id="fV2" class="inp" placeholder="e.g. Rabies"></label>
+            <label class="lbl col-span-2">Due date<input id="fV2d" type="date" class="inp"></label>
+          </div>
+        </div>
+        <button onclick="saveProfile()" class="w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold shadow-lg shadow-indigo-300/50 active:scale-[.98] transition">Create Passport →</button>
+        <button onclick="fillDemo()" class="w-full text-sm font-semibold text-slate-500 py-1">Use demo data (Max)</button>
+      </section>
+
+      <!-- 1. DASHBOARD -->
+      <section id="dashboard" class="view space-y-5">
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+          <div class="h-28 bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-400 relative">
+            <button onclick="editProfile()" class="absolute top-3 left-3 text-[11px] font-bold bg-white/25 text-white px-2.5 py-1 rounded-full backdrop-blur hover:bg-white/40">✎ Edit</button>
+            <span class="absolute top-3 right-3 text-[10px] font-bold bg-white/25 text-white px-2.5 py-1 rounded-full backdrop-blur">DIGITAL PASSPORT</span>
+          </div>
+          <div class="px-5 pb-5 -mt-12">
+            <div class="flex items-end justify-between">
+              <img alt="Pet photo" class="w-24 h-24 rounded-2xl border-4 border-white object-cover shadow-md bg-amber-100"
+                src="" data-photo>
+              <div id="qr" class="w-24 h-24 p-2 bg-white rounded-2xl border border-slate-200 shadow-sm" aria-label="Pet QR code"></div>
+            </div>
+            <div class="mt-3 flex items-center justify-between">
+              <div>
+                <h1 class="text-2xl font-extrabold tracking-tight"><span class="pn">Max</span></h1>
+                <p id="dSub" class="text-sm text-slate-500"></p>
+              </div>
+              <span class="text-[10px] text-slate-400 text-right leading-tight">Tag ID<br><b id="tagId" class="text-slate-600 text-xs"></b></span>
+            </div>
+            <div class="mt-4 grid grid-cols-3 gap-2 text-center">
+              <div class="bg-slate-50 rounded-xl py-2"><p class="text-[10px] text-slate-400 uppercase">Weight</p><p id="stWeight" class="font-bold text-sm"></p></div>
+              <div class="bg-slate-50 rounded-xl py-2"><p class="text-[10px] text-slate-400 uppercase">Chip</p><p id="stChip" class="font-bold text-sm"></p></div>
+              <div class="bg-slate-50 rounded-xl py-2"><p class="text-[10px] text-slate-400 uppercase">Species</p><p id="stSpecies" class="font-bold text-sm"></p></div>
+            </div>
+            <button onclick="downloadQR()" class="mt-3 w-full text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl py-2.5">⬇ Download QR for collar strap · scannable with Google Lens</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="font-bold text-lg">Medical Timeline</h2>
+            <button onclick="openModal()" class="flex items-center gap-1.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 transition px-3.5 py-2 rounded-xl shadow">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.500" viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5l5 5M4 20h16"/></svg>Upload Document
+            </button>
+          </div>
+          <ol id="timeline" class="relative border-l-2 border-slate-200 ml-3 space-y-4"></ol>
+          <button id="syncAll" onclick="downloadICS()" class="hidden mt-4 w-full py-3 rounded-2xl bg-white border border-slate-200 text-sm font-bold text-slate-700 hover:bg-slate-50">📅 Add all vaccines to calendar (.ics)</button>
+        </div>
+      </section>
+
+      <!-- 2. LOST PET -->
+      <section id="lost" class="view space-y-5">
+        <div id="missingCard" class="rounded-3xl p-5 bg-white border border-slate-100 shadow-sm transition-colors">
+          <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Owner’s Panel</p>
+          <h2 id="missingTitle" class="text-xl font-extrabold mt-1">Is <span class="pn">Max</span> missing?</h2>
+          <p id="missingSub" class="text-sm text-slate-500 mt-1">Flip the switch to alert nearby PetPulse users and activate the tag’s emergency page.</p>
+          <button id="missingBtn" onclick="toggleMissing()" class="mt-4 w-full flex items-center justify-between px-5 py-4 rounded-2xl bg-slate-900 text-white font-extrabold tracking-wide active:scale-[.98] transition" aria-pressed="false">
+            <span id="missingLabel">REPORT MISSING</span>
+            <span class="w-14 h-8 rounded-full bg-white/20 p-1 flex"><span id="knob" class="toggle-knob w-6 h-6 rounded-full bg-white"></span></span>
+          </button>
+        </div>
+
+        <!-- Latest sighting from a stranger -->
+        <div id="sightCard" class="hidden rounded-3xl p-5 bg-emerald-50 border border-emerald-200 space-y-3">
+          <h3 class="font-bold text-emerald-800">👀 Latest sighting reported</h3>
+          <p id="sightTxt" class="text-sm text-emerald-900"></p>
+          <iframe id="sightMap" title="Sighting map" class="w-full h-40 rounded-xl border border-emerald-200" loading="lazy"></iframe>
+          <button onclick="navTo(sighting && sighting.q)" class="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold active:scale-[.98] transition">🧭 Navigate to sighting in Google Maps</button>
+        </div>
+
+        <div id="emergencyForm" class="hidden space-y-4">
+          <div class="rounded-3xl p-5 bg-gradient-to-br from-red-50 to-orange-50 border border-orange-200">
+            <h3 class="font-bold text-red-700 flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-red-500 pulse-ring"></span>Broadcast alert</h3>
+            <div class="mt-4 space-y-3">
+              <label class="block text-xs font-semibold text-slate-600">Last known location
+                <div class="mt-1 flex gap-2">
+                  <input id="lastLoc" class="flex-1 rounded-xl border border-orange-200 bg-white px-3 py-2.5 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="e.g. Lodhi Garden, near Gate 2">
+                  <button type="button" onclick="useMyLocation()" class="px-3 rounded-xl bg-white border border-orange-200 text-orange-600" title="Use my location" aria-label="Use my location">📍</button>
+                </div>
+              </label>
+              <p id="locHint" class="hidden text-xs font-semibold text-orange-700"></p>
+
+              <!-- Google Maps preview -->
+              <div id="mapBox" class="hidden space-y-2">
+                <iframe id="lastMap" title="Last known location map" class="w-full h-44 rounded-xl border border-orange-200" loading="lazy"></iframe>
+                <div class="grid grid-cols-2 gap-2">
+                  <button type="button" onclick="navTo(currentQuery())" class="py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold active:scale-[.98] transition">🧭 Navigate</button>
+                  <button type="button" onclick="openMaps(currentQuery())" class="py-2.5 rounded-xl bg-white border border-blue-200 text-blue-700 text-sm font-bold active:scale-[.98] transition">🗺 Open in Maps</button>
+                </div>
+              </div>
+
+              <label class="block text-xs font-semibold text-slate-600">Temporary contact number
+                <input id="tempPhone" type="tel" class="mt-1 w-full rounded-xl border border-orange-200 bg-white px-3 py-2.5 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="+91 98765 43210">
+              </label>
+              <label class="block text-xs font-semibold text-slate-600">Message for finders
+                <textarea rows="2" class="mt-1 w-full rounded-xl border border-orange-200 bg-white px-3 py-2.5 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="e.g. Friendly, responds to name. Reward offered."></textarea>
+              </label>
+              <button onclick="broadcast(this)" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-red-500 to-orange-500 text-white font-bold shadow-lg shadow-red-300/50 active:scale-[.98] transition">📡 Broadcast to nearby users</button>
+              <p id="broadcastMsg" class="hidden text-center text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl py-2.5">✔ Alert sent to 1,284 PetPulse users within 5 km</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. STRANGER -->
+      <section id="stranger" class="view space-y-4">
+        <!-- Scanner -->
+        <div class="bg-white rounded-3xl p-4 border border-slate-100 shadow-sm space-y-3">
+          <div>
+            <h3 class="font-bold">Found a pet? Scan the strap QR</h3>
+            <p class="text-xs text-slate-500">Google Lens reads the QR and opens the pet’s rescue page. Or scan right here.</p>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <a href="https://lens.google.com/" target="_blank" rel="noopener" class="py-3 rounded-xl bg-gradient-to-r from-blue-500 via-red-400 to-amber-400 text-white text-sm font-bold text-center active:scale-[.98] transition">🔍 Open Google Lens</a>
+            <button type="button" onclick="startScan()" class="py-3 rounded-xl bg-slate-900 text-white text-sm font-bold active:scale-[.98] transition">📷 Scan in app</button>
+          </div>
+          <label class="block text-center text-xs font-semibold text-indigo-600 cursor-pointer">🖼 Or upload a photo of the QR
+            <input id="qrFile" type="file" accept="image/*" class="hidden">
+          </label>
+          <div id="scanBox" class="hidden space-y-2">
+            <video id="scanVideo" playsinline muted class="w-full rounded-xl bg-black"></video>
+            <button type="button" onclick="stopScan()" class="w-full py-2 rounded-xl bg-slate-100 text-sm font-semibold">Stop camera</button>
+          </div>
+          <p id="scanMsg" class="hidden text-center text-sm font-semibold rounded-xl py-2.5 px-3"></p>
+        </div>
+
+        <div class="text-center text-[11px] font-semibold text-slate-500 bg-slate-200/70 rounded-full py-1.5 px-3">🔎 SIMULATION · This is what a stranger sees after scanning <span class="pn">Max</span>’s collar tag</div>
+        <div id="strangerMissing" class="hidden bg-red-600 text-white rounded-2xl px-4 py-3 text-sm font-semibold text-center">🚨 <span class="pn">Max</span> has been reported MISSING. Their family is searching for him.</div>
+        <div class="rounded-3xl overflow-hidden bg-white shadow-lg border border-slate-100 text-center">
+          <div class="bg-gradient-to-br from-amber-400 to-orange-500 px-5 pt-7 pb-14">
+            <h2 class="text-3xl font-black text-white leading-tight tracking-tight">HELP ME<br>GET HOME!</h2>
+          </div>
+          <div class="-mt-10 px-5 pb-6">
+            <img alt="Pet photo" class="w-24 h-24 mx-auto rounded-full border-4 border-white shadow-md object-cover bg-amber-100"
+              src="" data-photo>
+            <p class="mt-3 text-xl font-extrabold">I am <span class="pn">Max</span>.</p>
+            <p id="sSub" class="text-sm text-slate-500"></p>
+            <div class="mt-3 flex flex-wrap justify-center gap-2 text-[11px] font-bold">
+              <span id="sChip" class="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full">✔ Microchipped</span>
+              <span class="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full">✔ Vaccine records</span>
+              <span id="sOwner" class="bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full"></span>
+            </div>
+          </div>
+        </div>
+
+        <button onclick="askLocation()" id="locBtn" class="w-full py-5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-lg font-extrabold shadow-xl shadow-indigo-300/60 active:scale-[.98] transition flex items-center justify-center gap-2">
+          📍 Share Current Location
+        </button>
+        <p id="locMsg" class="hidden text-center text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl py-3 px-3"></p>
+
+        <div class="grid grid-cols-2 gap-3">
+          <a id="callBtn" href="#" class="py-4 rounded-2xl bg-slate-900 text-white font-bold text-center active:scale-[.98] transition">📞 Call Owner</a>
+          <a id="waBtn" href="#" target="_blank" rel="noopener" class="py-4 rounded-2xl bg-emerald-500 text-white font-bold text-center active:scale-[.98] transition">💬 WhatsApp Owner</a>
+        </div>
+        <p class="text-center text-[11px] text-slate-400">Powered by PetPulse · Your location is shared only with <span class="pn">Max</span>’s owner</p>
+      </section>
+    </main>
+
+    <!-- Bottom nav -->
+    <nav id="mainNav" class="sticky bottom-0 bg-white border-t border-slate-100 grid grid-cols-3 px-2 pt-2 pb-3 z-20" aria-label="Main">
+      <button data-go="dashboard" class="nav flex flex-col items-center gap-0.5 py-1 text-xs font-semibold">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9h6M7 13h10"/></svg>Passport</button>
+      <button data-go="lost" class="nav flex flex-col items-center gap-0.5 py-1 text-xs font-semibold">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s7-6.200 7-12a7 7 0 10-14 0c0 5.800 7 12 7 12z"/><circle cx="12" cy="10" r="2.500"/></svg>Emergency</button>
+      <button data-go="stranger" class="nav flex flex-col items-center gap-0.5 py-1 text-xs font-semibold">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 012-2h2M16 4h2a2 2 0 012 2v2M20 16v2a2 2 0 01-2 2h-2M8 20H6a2 2 0 01-2-2v-2M4 12h16"/></svg>Scan Tag</button>
+    </nav>
+
+    <!-- Upload modal -->
+    <div id="modal" class="modal fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm items-end justify-center">
+      <div class="w-full max-w-md bg-white rounded-t-3xl p-5 pb-8">
+        <div class="w-10 h-1.5 bg-slate-200 rounded-full mx-auto mb-4"></div>
+        <h3 class="text-lg font-bold">Upload Document</h3>
+        <p class="text-sm text-slate-500">Vaccination certificates, vet reports, insurance.</p>
+        <label class="mt-4 flex flex-col items-center justify-center border-2 border-dashed border-indigo-200 bg-indigo-50/50 rounded-2xl py-8 cursor-pointer hover:bg-indigo-50 transition">
+          <span class="text-3xl">📄</span>
+          <span id="fileName" class="mt-1 text-sm font-semibold text-indigo-600">Tap to choose a file</span>
+          <span class="text-xs text-slate-400">PDF, JPG or PNG · up to 10 MB</span>
+          <input type="file" class="hidden" onchange="document.getElementById('fileName').textContent = this.files[0] ? this.files[0].name : 'Tap to choose a file'">
+        </label>
+        <select id="docType" class="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm">
+          <option>Vaccination record</option><option>Vet report</option><option>Insurance</option>
+        </select>
+        <div class="mt-4 grid grid-cols-2 gap-3">
+          <button onclick="closeModal()" class="py-3 rounded-xl bg-slate-100 font-semibold">Cancel</button>
+          <button onclick="addDoc()" class="py-3 rounded-xl bg-indigo-600 text-white font-semibold">Upload</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Geolocation permission popup -->
+    <div id="perm" class="modal fixed inset-0 z-50 bg-slate-900/50 items-center justify-center px-8">
+      <div class="bg-white rounded-2xl w-full max-w-sm overflow-hidden text-center shadow-2xl">
+        <div class="p-5">
+          <p class="font-bold">“petpulse.app” would like to use your current location</p>
+          <p class="text-sm text-slate-500 mt-1">Your location will be sent to <span class="pn">Max</span>’s owner so they can find their pet.</p>
+        </div>
+        <div class="grid grid-cols-2 border-t border-slate-200 text-blue-600 font-semibold">
+          <button onclick="permResult(false)" class="py-3 border-r border-slate-200">Don’t Allow</button>
+          <button onclick="permResult(true)" class="py-3 font-bold">Allow</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let missing = false;
+  let P = null, photoData = '';
+  let lastCoords = '';      // "lat,lng" from the owner's GPS button
+  let sighting = null;      // {q, time} reported by a stranger
+  let scanStream = null, scanning = false;
+  const $ = id => document.getElementById(id);
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const setupErr = t => { const e = $('setupErr'); e.textContent = t; e.classList.remove('hidden'); };
+  const fmt = d => new Date(d + 'T00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const daysTo = d => Math.round((new Date(d + 'T00:00') - new Date(new Date().toDateString())) / 864e5);
+
+  /* ---------- Google Maps ---------- */
+  const embedUrl = q => 'https://maps.google.com/maps?q=' + encodeURIComponent(q) + '&z=16&output=embed';
+  const navTo = q => { if (q) window.open('https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(q), '_blank', 'noopener'); };
+  const openMaps = q => { if (q) window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q), '_blank', 'noopener'); };
+  const currentQuery = () => lastCoords || $('lastLoc').value.trim();
+
+  let mapTimer;
+  function updateMap() {
+    const q = currentQuery();
+    $('mapBox').classList.toggle('hidden', !q);
+    if (q && $('lastMap').dataset.q !== q) { $('lastMap').dataset.q = q; $('lastMap').src = embedUrl(q); }
+  }
+  $('lastLoc').addEventListener('input', () => { lastCoords = ''; clearTimeout(mapTimer); mapTimer = setTimeout(updateMap, 600); });
+
+  function useMyLocation() {
+    const h = $('locHint'); h.classList.remove('hidden'); h.textContent = 'Getting your location…';
+    const fallback = msg => { lastCoords = ''; $('lastLoc').value = 'Lodhi Garden, New Delhi'; h.textContent = msg + ' Using a demo location instead.'; updateMap(); };
+    if (!navigator.geolocation) return fallback('Location not supported.');
+    navigator.geolocation.getCurrentPosition(p => {
+      lastCoords = p.coords.latitude.toFixed(6) + ',' + p.coords.longitude.toFixed(6);
+      $('lastLoc').value = 'My current location (' + lastCoords + ')';
+      h.textContent = '✔ Pinned to your current GPS position.'; updateMap();
+    }, () => fallback('Location permission denied or unavailable.'), { enableHighAccuracy: true, timeout: 8000 });
+  }
+
+  function setSighting(q) {
+    sighting = { q, time: new Date() };
+    $('sightTxt').textContent = 'A finder shared a location at ' + sighting.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (' + q + ').';
+    $('sightMap').src = embedUrl(q);
+    $('sightCard').classList.remove('hidden');
+  }
+
+  /* ---------- Google Calendar ---------- */
+  const ymd = d => d.replace(/-/g, '');
+  const nextDay = d => { const x = new Date(d + 'T00:00'); x.setDate(x.getDate() + 1); return x.getFullYear() + String(x.getMonth() + 1).padStart(2, '0') + String(x.getDate()).padStart(2, '0'); };
+  function calUrl(title, date, details) {
+    return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(title) +
+      '&dates=' + ymd(date) + '/' + nextDay(date) + '&details=' + encodeURIComponent(details) + '&sf=true&output=xml';
+  }
+  const vaxDetails = () => 'Vaccination for ' + P.name + '. Booked via PetPulse.' + (P.owner ? ' Owner: ' + P.owner + '.' : '');
+
+  function downloadICS() {
+    const ev = [];
+    if (P.v2 && P.v2d) ev.push({ t: '💉 ' + P.name + ': ' + P.v2 + ' due', d: P.v2d, alarm: true });
+    if (P.v1 && P.v1d) ev.push({ t: '✔ ' + P.name + ': ' + P.v1 + ' given', d: P.v1d });
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//PetPulse//EN'];
+    ev.forEach((e, i) => {
+      L.push('BEGIN:VEVENT', 'UID:petpulse-' + i + '-' + ymd(e.d) + '@petpulse.app', 'DTSTAMP:' + stamp,
+        'DTSTART;VALUE=DATE:' + ymd(e.d), 'DTEND;VALUE=DATE:' + nextDay(e.d), 'SUMMARY:' + e.t, 'DESCRIPTION:' + vaxDetails());
+      if (e.alarm) ['-P7D', '-P1D'].forEach(tr => L.push('BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Vaccine reminder', 'TRIGGER:' + tr, 'END:VALARM'));
+      L.push('END:VEVENT');
+    });
+    L.push('END:VCALENDAR');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([L.join('\r\n')], { type: 'text/calendar' }));
+    a.download = P.name + '-vaccines.ics'; a.click(); URL.revokeObjectURL(a.href);
+  }
+
+  /* ---------- Profile ---------- */
+  function setPhoto(d) { photoData = d || ''; const b = $('photoPrev'); b.style.backgroundImage = d ? 'url("' + d + '")' : ''; b.textContent = d ? '' : '📷'; }
+  $('fPhoto').addEventListener('change', e => {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader(); r.onload = () => setPhoto(r.result); r.readAsDataURL(f);
+  });
+
+  function avatar() {
+    if (P.photo) return P.photo;
+    const em = { Dog: '🐶', Cat: '🐱' }[P.species] || '🐾';
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='#fde68a'/><text x='50' y='70' font-size='56' text-anchor='middle'>" + em + "</text></svg>");
+  }
+
+  function saveProfile() {
+    const v = id => $(id).value.trim();
+    if (!v('fName') || !v('fPhone')) { setupErr('Please add your pet’s name and a contact phone number.'); window.scrollTo(0, 0); return; }
+    $('setupErr').classList.add('hidden');
+    P = { name: v('fName'), species: $('fSpecies').value, breed: v('fBreed'), age: v('fAge'), weight: v('fWeight'), chip: $('fChip').checked,
+          owner: v('fOwner'), phone: v('fPhone'), wa: $('fWa').checked, photo: photoData, v1: v('fV1'), v1d: $('fV1d').value, v2: v('fV2'), v2d: $('fV2d').value };
+    applyData(); go('dashboard');
+  }
+
+  function editProfile() {
+    const m = { fName: 'name', fSpecies: 'species', fBreed: 'breed', fAge: 'age', fWeight: 'weight', fOwner: 'owner', fPhone: 'phone', fV1: 'v1', fV1d: 'v1d', fV2: 'v2', fV2d: 'v2d' };
+    for (const k in m) $(k).value = P[m[k]];
+    $('fChip').checked = P.chip; $('fWa').checked = P.wa; setPhoto(P.photo); go('setup');
+  }
+
+  function fillDemo() {
+    const d = new Date(); d.setDate(d.getDate() + 12);
+    const set = { fName: 'Max', fBreed: 'Golden Retriever', fAge: '2 years', fWeight: '29 kg', fOwner: 'Alex', fPhone: '+91 98765 43210', fV1: 'Parvovirus', fV1d: '2026-03-14', fV2: 'Rabies Vaccine (booster)', fV2d: d.toISOString().slice(0, 10) };
+    for (const k in set) $(k).value = set[k];
+    $('fSpecies').value = 'Dog'; $('fChip').checked = true; $('fWa').checked = true; setPhoto('');
+    saveProfile();
+  }
+
+  function missingText() {
+    const n = P ? P.name : 'your pet';
+    $('missingLabel').textContent = missing ? 'MARK ' + n.toUpperCase() + ' AS FOUND' : 'REPORT MISSING';
+    $('missingTitle').textContent = missing ? 'Search mode is ON' : 'Is ' + n + ' missing?';
+    $('missingSub').textContent = missing ? 'We’re helping you find ' + n + '. Add details below so finders can reach you fast.' : 'Flip the switch to alert nearby PetPulse users and activate the tag’s emergency page.';
+  }
+
+  function renderTimeline() {
+    const item = (t, sub, dot, badge, bc, action) => '<li class="ml-5 bg-white rounded-2xl p-4 border border-slate-100 shadow-sm relative"><span class="absolute -left-[31px] top-5 w-4 h-4 rounded-full ' + dot + ' ring-4 ring-slate-50"></span><div class="flex items-start justify-between gap-2"><div><p class="font-semibold">' + esc(t) + '</p><p class="text-xs text-slate-400">' + esc(sub) + '</p></div><span class="shrink-0 text-[11px] font-bold ' + bc + ' px-2.5 py-1 rounded-full">' + badge + '</span></div>' + (action || '') + '</li>';
+    const calBtn = (title, d) => '<a href="' + esc(calUrl(title, d, vaxDetails())) + '" target="_blank" rel="noopener" class="mt-3 block text-center text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl py-2">📅 Add to Google Calendar</a>';
+    let h = '';
+    if (P.v2) {
+      const n = P.v2d ? daysTo(P.v2d) : null;
+      const amber = 'bg-amber-100 text-amber-700', red = 'bg-red-100 text-red-700';
+      const act = P.v2d ? calBtn(P.name + ': ' + P.v2 + ' due', P.v2d) : '';
+      if (n === null) h += item(P.v2, 'Upcoming', 'bg-amber-400', '⏰ Upcoming', amber);
+      else if (n < 0) h += item(P.v2, 'Was due ' + fmt(P.v2d), 'bg-red-500', '❗ Overdue ' + (-n) + ' days', red);
+      else h += item(P.v2, 'Due ' + fmt(P.v2d), 'bg-amber-400', n === 0 ? '⏰ Due today' : '⏰ Due in ' + n + ' days', amber, act);
+    }
+    if (P.v1) h += item(P.v1, P.v1d ? 'Completed · ' + fmt(P.v1d) : 'Completed', 'bg-emerald-500', '✔ Completed', 'bg-emerald-100 text-emerald-700');
+    $('timeline').innerHTML = h || '<li class="ml-5 text-sm text-slate-400">No records yet. Tap Upload Document to add one.</li>';
+    $('syncAll').classList.toggle('hidden', !((P.v2 && P.v2d) || (P.v1 && P.v1d)));
+  }
+
+  /* ---------- QR (real, scannable) ---------- */
+  function tagPayload() {
+    const { photo, ...rest } = P;
+    return location.href.split('#')[0] + '#scan=' + encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(rest)))));
+  }
+  function parseTag(text) {
+    const i = text.indexOf('#scan=');
+    if (i < 0) return null;
+    try { return Object.assign({ photo: '' }, JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(text.slice(i + 6))))))); } catch (e) { return null; }
+  }
+  function drawQR() {
+    $('qr').innerHTML = '';
+    new QRCode($('qr'), { text: tagPayload(), width: 220, height: 220, colorDark: '#1e1b4b', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.L });
+  }
+  function downloadQR() {
+    const c = $('qr').querySelector('canvas'); if (!c) return;
+    const a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = P.name + '-pet-tag-qr.png'; a.click();
+  }
+
+  function applyData() {
+    document.querySelectorAll('.pn').forEach(e => e.textContent = P.name);
+    const sub = [P.breed || P.species, P.age].filter(Boolean).join(' · ');
+    $('dSub').textContent = sub; $('sSub').textContent = sub;
+    $('stWeight').textContent = P.weight || '—'; $('stSpecies').textContent = P.species; $('stChip').textContent = P.chip ? 'Yes' : 'No';
+    $('sChip').classList.toggle('hidden', !P.chip);
+    $('sOwner').textContent = P.owner ? 'Owner: ' + P.owner : ''; $('sOwner').classList.toggle('hidden', !P.owner);
+    let h = 0; for (const c of P.name + P.phone) h = (h * 31 + c.charCodeAt(0)) % 100000;
+    $('tagId').textContent = 'PP-' + String(h).padStart(5, '0') + '-' + P.name.slice(0, 2).toUpperCase();
+    drawQR();
+    document.querySelectorAll('[data-photo]').forEach(i => i.src = avatar());
+    const num = P.phone.replace(/[^\d+]/g, '');
+    $('callBtn').href = 'tel:' + num;
+    $('waBtn').href = 'https://wa.me/' + num.replace('+', '') + '?text=' + encodeURIComponent('Hi, I found ' + P.name + '!');
+    $('waBtn').classList.toggle('hidden', !P.wa); $('callBtn').classList.toggle('col-span-2', !P.wa);
+    $('tempPhone').value = P.phone; $('locMsg').classList.add('hidden'); $('locBtn').textContent = '📍 Share Current Location';
+    renderTimeline(); missingText();
+  }
+
+  /* ---------- Scanner (camera + photo upload, Lens link above) ---------- */
+  const detector = 'BarcodeDetector' in window ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
+  function scanMsg(t, ok) {
+    const m = $('scanMsg'); m.textContent = t; m.className = 'text-center text-sm font-semibold rounded-xl py-2.5 px-3 ' + (ok ? 'text-emerald-700 bg-emerald-50 border border-emerald-200' : 'text-amber-700 bg-amber-50 border border-amber-200');
+  }
+  async function decodeEl(el, w, h) {
+    if (detector) { try { const r = await detector.detect(el); if (r.length) return r[0].rawValue; } catch (e) {} return null; }
+    if (typeof jsQR === 'undefined') return null;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(el, 0, 0, w, h);
+    const r = jsQR(x.getImageData(0, 0, w, h).data, w, h); return r ? r.data : null;
+  }
+  function handleScan(text) {
+    const tag = parseTag(text);
+    if (tag) {
+      if (!P || P.name !== tag.name || P.phone !== tag.phone) { P = tag; applyData(); }
+      stopScan(); go('stranger'); scanMsg('✔ Tag recognised: ' + tag.name + '’s rescue page is open below.', true);
+    } else {
+      stopScan();
+      scanMsg(/^https?:\/\//.test(text) ? 'QR read, but it is not a PetPulse tag: ' + text : 'This QR code is not a PetPulse tag.', false);
+    }
+  }
+  async function startScan() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return scanMsg('Camera not available here. Use Google Lens or upload a photo of the QR.', false);
+    try {
+      scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    } catch (e) { return scanMsg('Camera permission denied. Use Google Lens or upload a photo instead.', false); }
+    const v = $('scanVideo'); v.srcObject = scanStream; await v.play();
+    $('scanBox').classList.remove('hidden'); $('scanMsg').classList.add('hidden'); scanning = true;
+    const tick = async () => {
+      if (!scanning) return;
+      if (v.videoWidth) { const t = await decodeEl(v, v.videoWidth, v.videoHeight); if (t) return handleScan(t); }
+      setTimeout(tick, 200);
+    };
+    tick();
+  }
+  function stopScan() {
+    scanning = false;
+    if (scanStream) scanStream.getTracks().forEach(t => t.stop());
+    scanStream = null; $('scanBox').classList.add('hidden');
+  }
+  $('qrFile').addEventListener('change', e => {
+    const f = e.target.files[0]; if (!f) return;
+    const img = new Image();
+    img.onload = async () => { const t = await decodeEl(img, img.naturalWidth, img.naturalHeight); URL.revokeObjectURL(img.src); t ? handleScan(t) : scanMsg('No QR code found in that photo. Try a clearer, closer shot.', false); };
+    img.src = URL.createObjectURL(f); e.target.value = '';
+  });
+
+  /* ---------- Navigation ---------- */
+  function go(id) {
+    if (!P && id !== 'setup') { id = 'setup'; setupErr('Create your pet’s passport first, or tap “Use demo data”.'); }
+    if (id !== 'stranger') stopScan();
+    $('mainNav').classList.toggle('hidden', id === 'setup');
+    document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
+    document.querySelectorAll('.nav').forEach(b => {
+      const on = b.dataset.go === id;
+      b.classList.toggle('text-indigo-600', on && !missing);
+      b.classList.toggle('text-red-600', on && missing);
+      b.classList.toggle('text-slate-400', !on);
+    });
+    const tag = document.getElementById('modeTag');
+    tag.textContent = id === 'stranger' ? 'Public Page' : id === 'setup' ? 'Setup' : 'Owner';
+    window.scrollTo(0, 0);
+  }
+  document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => go(b.dataset.go)));
+
+  // Missing toggle
+  function toggleMissing() {
+    missing = !missing;
+    const q = id => document.getElementById(id);
+    q('phone').classList.toggle('alert', missing);
+    q('shell').style.backgroundColor = missing ? '#fff7ed' : '';
+    q('alertBar').classList.toggle('hidden', !missing);
+    q('emergencyForm').classList.toggle('hidden', !missing);
+    q('strangerMissing').classList.toggle('hidden', !missing);
+    q('logo').classList.toggle('bg-indigo-600', !missing); q('logo').classList.toggle('bg-red-500', missing);
+    q('logoAccent').classList.toggle('text-indigo-600', !missing); q('logoAccent').classList.toggle('text-red-500', missing);
+    missingText();
+    q('missingBtn').className = 'mt-4 w-full flex items-center justify-between px-5 py-4 rounded-2xl text-white font-extrabold tracking-wide active:scale-[.98] transition ' + (missing ? 'bg-gradient-to-r from-red-600 to-orange-500 pulse-ring' : 'bg-slate-900');
+    q('missingBtn').setAttribute('aria-pressed', missing);
+    q('knob').style.transform = missing ? 'translateX(24px)' : '';
+    if (!missing) q('broadcastMsg').classList.add('hidden');
+    const cur = document.querySelector('.view.active').id; go(cur);
+  }
+  function broadcast(btn) {
+    document.getElementById('broadcastMsg').classList.remove('hidden');
+    btn.textContent = '📡 Broadcast again';
+  }
+
+  // Upload modal
+  const openModal = () => document.getElementById('modal').classList.add('open');
+  const closeModal = () => document.getElementById('modal').classList.remove('open');
+  function addDoc() {
+    const type = document.getElementById('docType').value;
+    const name = document.getElementById('fileName').textContent;
+    const label = name.startsWith('Tap') ? type : name;
+    const li = document.createElement('li');
+    li.className = 'ml-5 bg-white rounded-2xl p-4 border border-indigo-200 shadow-sm relative';
+    li.innerHTML = '<span class="absolute -left-[31px] top-5 w-4 h-4 rounded-full bg-indigo-500 ring-4 ring-slate-50"></span><div class="flex items-start justify-between gap-2"><div><p class="font-semibold"></p><p class="text-xs text-slate-400">Just now · ' + type + '</p></div><span class="shrink-0 text-[11px] font-bold bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full">⬆ Uploaded</span></div>';
+    li.querySelector('p').textContent = label;
+    document.getElementById('timeline').prepend(li);
+    document.getElementById('fileName').textContent = 'Tap to choose a file';
+    closeModal();
+  }
+
+  // Stranger shares location (real GPS, demo fallback) → owner gets a sighting with Maps navigation
+  function askLocation() { document.getElementById('perm').classList.add('open'); }
+  function permResult(ok) {
+    document.getElementById('perm').classList.remove('open');
+    const m = document.getElementById('locMsg');
+    m.classList.remove('hidden', 'text-emerald-700', 'bg-emerald-50', 'border-emerald-200', 'text-amber-700', 'bg-amber-50', 'border-amber-200');
+    if (!ok) {
+      m.classList.add('text-amber-700', 'bg-amber-50', 'border-amber-200');
+      m.textContent = 'Location permission denied. You can still call or WhatsApp the owner below.';
+      return;
+    }
+    const done = (lat, lng, real) => {
+      const q = lat.toFixed(6) + ',' + lng.toFixed(6);
+      m.classList.add('text-emerald-700', 'bg-emerald-50', 'border-emerald-200');
+      m.textContent = '✔ ' + (real ? 'Location' : 'Demo location') + ' sent to ' + P.name + '’s owner (' + q + '). Thank you for helping!';
+      $('locBtn').textContent = '✔ Location Shared';
+      setSighting(q);
+    };
+    if (!navigator.geolocation) return done(28.5933, 77.2197, false);
+    navigator.geolocation.getCurrentPosition(p => done(p.coords.latitude, p.coords.longitude, true), () => done(28.5933, 77.2197, false), { enableHighAccuracy: true, timeout: 8000 });
+  }
+
+  // Opened from a scanned QR / Google Lens link → show the rescue page directly
+  const scanned = parseTag(location.hash);
+  if (scanned) { P = scanned; applyData(); go('stranger'); } else go('setup');
+</script>
+</body>
+</html>
